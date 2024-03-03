@@ -179,12 +179,13 @@ class DQNAgent(base_agent.BaseAgent):
         should be a scalar tensor containing the loss for updating the Q-function.
         '''
         q = self._model.eval_q(norm_obs)
-        q_vals = torch.zeros(a.shape[0]).to(self._device)
-        for i in range(q.shape[0]):
-            actions = q[i]
-            idx = a[i]
-            act = actions[idx]
-            q_vals[i] = act
+        # q_vals = torch.zeros(a.shape[0]).to(self._device)
+        q_vals = q[q.shape[0], a]
+        # for i in range(q.shape[0]):
+        #     actions = q[i]
+        #     idx = a[i]
+        #     act = actions[idx]
+        #     q_vals[i] = act
         loss = torch.mean(torch.pow((tar_vals - q_vals), 2))
         
         return loss
