@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 import torch
+import random
 
 import envs.base_env as base_env
 import learning.base_agent as base_agent
@@ -121,9 +122,13 @@ class DQNAgent(base_agent.BaseAgent):
         then linearly annealed to self._exp_prob_end over the course of self._exp_anneal_samples
         timesteps.
         '''
+        e_beg = self._exp_prob_beg
+        e_end = self._exp_prob_end
+        t = self._sample_count
+        t_max = self._exp_anneal_samples
 
-        # placeholder
-        prob = 1.0
+        l = np.clip([t/t_max], a_min=0, a_max=1)[0]
+        prob = ((1-l)*e_beg) + (l*e_end)
 
         return prob
 
@@ -137,9 +142,16 @@ class DQNAgent(base_agent.BaseAgent):
         action.
         '''
         exp_prob = self._get_exp_prob()
-
-        # placeholder
-        a = torch.zeros(qs.shape[0], device=self._device, dtype=torch.int64)
+        rand = random.random()
+        # if rand falls between exp_prob and 1 then be greedy
+        greedy = (1-exp_prob) > rand
+        if greedy:
+            # select action with highest Q-val
+            a = torch.argmax(qs, dim=1)
+        else:
+            # select random action
+            a = random.randint(0, qs.shape[1]-1)
+        a = torch.tensor([a])
         return a
     
     def _compute_tar_vals(self, r, norm_next_obs, done):
@@ -151,9 +163,11 @@ class DQNAgent(base_agent.BaseAgent):
         be calculated using the target model (self._tar_model), not the main model (self._model).
         The Q-function can be queried by using the method eval_q(norm_obs).
         '''
-        
-        # placeholder
-        tar_vals = torch.zeros_like(r)
+        #TODO check if this is the correct approach or if we need to find the max somehow
+        q_tar = self._tar_model.eval_q(norm_next_obs)
+        q_tar = torch.max(q_tar, dim=1)[0]
+
+        tar_vals = r + (self._discount*(torch.ones(done.shape).to(self._device) - done)*q_tar)
 
         return tar_vals
 
@@ -164,9 +178,14 @@ class DQNAgent(base_agent.BaseAgent):
         at each timestep (a), and target values for each timestep (tar_vals). The output (loss)
         should be a scalar tensor containing the loss for updating the Q-function.
         '''
-        
-        # placeholder
-        loss = torch.zeros(1)
+        q = self._model.eval_q(norm_obs)
+        q_vals = torch.zeros(a.shape[0]).to(self._device)
+        for i in range(q.shape[0]):
+            actions = q[i]
+            idx = a[i]
+            act = actions[idx]
+            q_vals[i] = act
+        loss = torch.mean(torch.pow((tar_vals - q_vals), 2))
         
         return loss
     
@@ -177,5 +196,5 @@ class DQNAgent(base_agent.BaseAgent):
         HINT: self._model.parameters() can be used to retrieve a list of tensors containing
         the parameters of a model.
         '''
-        
-        return
+        model_state_dict = self._model.state_dict()
+        self._tar_model.load_state_dict(model_state_dict)
